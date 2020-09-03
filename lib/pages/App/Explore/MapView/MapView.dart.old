@@ -1,0 +1,342 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:carousel_slider/carousel_slider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:dejla/modules/SearchFilter.dart';
+import 'package:dejla/services/Geo.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_icons/flutter_icons.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:dejla/modules/MapViewData.dart';
+
+class MapViewPage extends StatefulWidget {
+  final Map arguments;
+
+  MapViewPage({Key key, this.arguments}) : super(key: key);
+
+  @override
+  _MapViewPageState createState() =>
+      _MapViewPageState(arguments: this.arguments);
+}
+
+class _MapViewPageState extends State<MapViewPage> {
+  CarouselController carouselController = CarouselController();
+  Completer<GoogleMapController> _controller = Completer();
+
+  final Map arguments;
+  _MapViewPageState({this.arguments});
+  GeoService geoService = new GeoService();
+
+  List<DocumentSnapshot> doc;
+
+  @override
+  void initState() {
+    doc = arguments['data'];
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    var _filter = Provider.of<SearchFilterModel>(context);
+
+    List<MapViewData> mapViewData = generateMapViewData(doc);
+    Set<Marker> markers = generateMapMarker(mapViewData);
+
+    return Scaffold(
+      body: Stack(
+        children: <Widget>[
+          FutureBuilder(
+            future: geoService.getGeoPosition(
+                "${_filter.location.city},${_filter.location.province},${_filter.location.country}"),
+            builder: (context, snapshot) {
+              // TODO: Loading stage
+              if (snapshot.data == null)
+                return Container(child: Text("Loading"));
+
+              final CameraPosition initialPosition = CameraPosition(
+                  target: LatLng(mapViewData[0].geoPoint.latitude,
+                      mapViewData[0].geoPoint.longitude),
+                  zoom: 14);
+
+              return Container(
+                child: GoogleMap(
+                  initialCameraPosition: initialPosition,
+                  onMapCreated: (GoogleMapController controller) {
+                    _controller.complete(controller);
+                  },
+                  zoomControlsEnabled: false,
+                  markers: markers,
+                  compassEnabled: true,
+                  mapToolbarEnabled: false,
+                ),
+              );
+            },
+          ),
+          SafeArea(
+            child: IconButton(
+              icon: Icon(FontAwesome.angle_left),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Builder(builder: (context) {
+              List<Widget> items = [];
+              mapViewData.forEach((MapViewData item) {
+                String url = "";
+                String title = "";
+                Widget subtitle;
+                Function onTap;
+                // if the type is unit build the unit card
+                if (item.type == "unit") {
+                  url = item.items[0]['images'][0];
+                  title = item.title;
+
+                  onTap = () {
+                    Navigator.of(context).pushNamed(
+                      '/detail',
+                      arguments: {
+                        'data': item.items[0].data,
+                        'documentID': item.items[0].documentID,
+                        'document': item.items[0]
+                      },
+                    );
+                  };
+
+                  // Available date
+                  Timestamp timestamp;
+                  List upcoming = item.items[0]['upcoming'];
+                  // find the nearest available date
+                  Timestamp nearestDate = upcoming[0]['date'];
+                  for (var val in upcoming) {
+                    Timestamp date = val['date'];
+                    if (date.compareTo(nearestDate) < 0) nearestDate = date;
+                  }
+                  timestamp = nearestDate;
+                  Text avaliableDate;
+                  if (timestamp.toDate().year <= DateTime.now().year &&
+                      timestamp.toDate().month <= DateTime.now().month &&
+                      timestamp.toDate().day <= DateTime.now().day) {
+                    avaliableDate = Text(
+                      "Available Now",
+                      style: TextStyle(
+                        color: Colors.green,
+                      ),
+                    );
+                  } else {
+                    avaliableDate = Text(
+                      "Next Available: " +
+                          "${timestamp.toDate().year}/" +
+                          "${timestamp.toDate().month}/" +
+                          "${timestamp.toDate().day}",
+                      style: TextStyle(
+                        color: Colors.blue,
+                      ),
+                    );
+                  }
+
+                  subtitle = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Text(
+                            "\$${item.items[0]['price']['amount']}",
+                            style: textTheme.body2,
+                          ),
+                          Text("\\${item.items[0]['price']['currency']} "),
+                        ],
+                      ),
+                      Text("${item.items[0]['address']['line_1']}"),
+                      Text("${item.items[0]['type'][0].toUpperCase()}" +
+                          "${item.items[0]['type'].substring(1)}"),
+                      avaliableDate
+                    ],
+                  );
+                }
+                // if the type is building build the building card
+                else {
+                  onTap = () {
+                    Navigator.of(context).pushNamed(
+                      '/buildingUnits',
+                      arguments: {
+                        'buildingID': item.buildingID,
+                      },
+                    );
+                  };
+
+                  title = item.title;
+                  url = item.icon != null
+                      ? item.icon
+                      : item.items[0]['images'][0];
+                  subtitle = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text("${item.items[0]['address']['line_1']}"),
+                      Text("${item.items[0]['type'][0].toUpperCase()}" +
+                          "${item.items[0]['type'].substring(1)}"),
+                      Text(
+                        "${item.items.length} Avaliable Units",
+                        style: TextStyle(color: Colors.blue),
+                      ),
+                    ],
+                  );
+                }
+                // add into items list
+                items.add(
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                    child: Card(
+                      elevation: 5,
+                      child: Container(
+                        width: MediaQuery.of(context).size.width - 50,
+                        child: Row(
+                          children: <Widget>[
+                            Expanded(
+                              flex: 2,
+                              child: Container(
+                                // height: 120,
+                                // width: 100,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: Radius.circular(5),
+                                    bottomLeft: Radius.circular(5),
+                                  ),
+                                  image: DecorationImage(
+                                    image: CachedNetworkImageProvider(
+                                      url,
+                                    ),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: ListTile(
+                                title: Container(
+                                  padding: EdgeInsets.only(bottom: 5),
+                                  child: Text(
+                                    "$title",
+                                    maxLines: 2,
+                                    style: textTheme.title,
+                                  ),
+                                ),
+                                subtitle: subtitle,
+                                onTap: onTap,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              });
+
+              return CarouselSlider(
+                items: items,
+                carouselController: carouselController,
+                options: CarouselOptions(
+                    height: 130,
+                    aspectRatio: 16 / 9,
+                    viewportFraction: 0.9,
+                    initialPage: 0,
+                    enableInfiniteScroll: true,
+                    reverse: false,
+                    autoPlay: false,
+                    autoPlayCurve: Curves.fastOutSlowIn,
+                    enlargeCenterPage: true,
+                    scrollDirection: Axis.horizontal,
+                    onPageChanged: (index, reason) async {
+                      await _updateCameraPosition(
+                          mapViewData[index].geoPoint.latitude,
+                          mapViewData[index].geoPoint.longitude);
+                    }),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Convert DocumentSnapshot into MapViewData
+  List<MapViewData> generateMapViewData(List<DocumentSnapshot> doc) {
+    List<MapViewData> _list = [];
+    List<String> _building = [];
+
+    // Conver all documents to MapViewData
+    doc.forEach((DocumentSnapshot data) {
+      // Check if the unit in the document has building
+      String buildingID = data.data['address']['ID'];
+      // print(buildingID);
+      bool flag = false;
+
+      // Position of the item in the building list
+      var index;
+
+      if (_building.length > 0) {
+        // _building.add(buildingID);
+        index = _building.indexOf(buildingID);
+        if (index >= 0) flag = true;
+      }
+      // if no building create a building create MapViewData for the building
+      if (flag == false) {
+        _building.add(buildingID);
+        _list.add(MapViewData(
+            buildingID: buildingID,
+            icon: data['building'] != null ? data['building']['icon'] : null,
+            title: data['building'] != null
+                ? data['building']['name']
+                : data['title'],
+            geoPoint: data['position']['geopoint'],
+            items: [data]));
+        // index = _building.indexOf(buildingID);
+      } else {
+        // add the item into the building
+        _list[index].addItem(data);
+      }
+    });
+    //return the MapViewData List
+    return _list;
+  }
+
+  // Generate map marker
+  Set<Marker> generateMapMarker(List<MapViewData> mapViewData) {
+    Set<Marker> markers = {};
+
+    for (int i = 0; i < mapViewData.length; i++) {
+      GeoPoint geopoint = mapViewData[i].geoPoint;
+      // print('${geopoint.latitude}, ${geopoint.longitude}');
+      markers.add(
+        Marker(
+            markerId: MarkerId('${mapViewData[i].buildingID}'),
+            position: LatLng(geopoint.latitude, geopoint.longitude),
+            icon: BitmapDescriptor.defaultMarker,
+            onTap: () {
+              carouselController.jumpToPage(i);
+            }),
+      );
+    }
+
+    return markers;
+  }
+
+  // Update google map camera position
+  Future _updateCameraPosition(double latitude, double longitude) async {
+    final GoogleMapController controller = await _controller.future;
+    controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+            target: LatLng(latitude, longitude), zoom: 16, bearing: 0),
+      ),
+    );
+  }
+}

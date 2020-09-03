@@ -1,0 +1,123 @@
+ListView(
+          padding: EdgeInsets.symmetric(vertical: 10),
+          children: <Widget>[
+            // Distance
+            
+            // Price Range
+            ListTile(
+              title: Text(
+                "Price Range",
+                style: textTheme.bodyText1,
+              ),
+              subtitle: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 15),
+                child: 
+              ),
+            ),
+
+            // Unit Type
+            ListTile(
+              title: Text(
+                "Unit type: ",
+                style: textTheme.bodyText1,
+              ),
+              subtitle: Builder(builder: (BuildContext context) {
+                List<Widget> _list = [];
+                for (int i = 0; i < UNIT_TYPES.length; i++) {
+                  _list.add(ChoiceChip(
+                    label: Text(UNIT_TYPES[i][0].toUpperCase() +
+                        UNIT_TYPES[i].substring(1)),
+                    selected: _filter.types[i],
+                    onSelected: (val) {
+                      _filter.types[i] = val;
+                      search.filterFloorPlan();
+                    },
+                  ));
+                }
+                return Wrap(
+                  spacing: 5,
+                  children: _list,
+                );
+              }),
+            ),
+
+            // Bedroom
+            ListTile(
+              title: Text(
+                "Bedroom: " + generateBedroomString(_filter.bedroom),
+                style: textTheme.bodyText1,
+              ),
+              subtitle: Row(
+                children: <Widget>[
+                  Text("Min"),
+                  Slider(
+                      min: -1,
+                      max: 5,
+                      divisions: 6,
+                      value: _filter.bedroom.toDouble(),
+                      onChanged: (val) {
+                        _filter.bedroom = val.toInt();
+                        search.filterFloorPlan();
+                      }),
+                  Text("Max"),
+                ],
+              ),
+            ),
+
+            // Bathroom
+            ListTile(
+              title: Text(
+                "Bathroom: " + generateBathroomString(_filter.bathroom),
+                style: textTheme.bodyText1,
+              ),
+              subtitle: Row(
+                children: <Widget>[
+                  Text("Min"),
+                  Slider(
+                      min: 0,
+                      max: 5,
+                      divisions: 5,
+                      value: _filter.bathroom.toDouble(),
+                      onChanged: (val) {
+                        _filter.bathroom = val.toInt();
+                        search.filterFloorPlan();
+                      }),
+                  Text("Max"),
+                ],
+              ),
+            ),
+
+            // Half Bathroom
+            ListTile(
+              title: Row(
+                children: <Widget>[
+                  Text(
+                    "Half Bathroom: ",
+                    style: textTheme.body2,
+                  ),
+                  Text(
+                    generateHalfBathroomString(_filter.halfBathroom),
+                    style: textTheme.body2,
+                  ),
+                ],
+              ),
+              subtitle: Row(
+                children: <Widget>[
+                  Text("Min"),
+                  Slider(
+                      min: -1,
+                      max: 5,
+                      divisions: 6,
+                      value: _filter.halfBathroom.toDouble(),
+                      onChanged: (val) {
+                        _filter.halfBathroom = val.toInt();
+                        search.notify();
+                      }),
+                  Text("Max"),
+                ],
+              ),
+            ),
+
+            // Utility Include
+          ],
+        ),
